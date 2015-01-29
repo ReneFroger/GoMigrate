@@ -1,0 +1,6 @@
+database: test
+username: root
+password: ""
+pool: 5
+timeout: 5000
+socket: /tmp/mysql.sock
