@@ -10,26 +10,27 @@ import (
 	"time"
 )
 
+const MigrationsPath string = "./migrates"
+const UpMigrationsPath string = "./migrates/up"
+const DownMigrationsPath string = "./migrates/down"
+const DatabaseConfigFilePath = "./config/database.json"
+
 type DatabaseConfig struct {
 	DriverName      string `json:"driver_name"`
 	DataScourceName string `json:"data_source_name"`
 }
 
 func NewMigrate(name string) {
-	os.Mkdir("./migrates", os.ModePerm)
-	os.Mkdir("./migrates/up", os.ModePerm)
-	os.Mkdir("./migrates/down", os.ModePerm)
-
 	prefix := time.Now().UTC().Format("19920709213000")
 
-	downName := "./migrates/up/" + prefix + name + ".sql"
+	downName := UpMigrationsPath + prefix + name + ".sql"
 	os.Create(downName)
-	upName := "./migrates/down/" + prefix + name + ".sql"
+	upName := DownMigrationsPath + prefix + name + ".sql"
 	os.Create(upName)
 }
 
 func Migrate() {
-	databaseConfig := loadConfig("./config/database.json")
+	databaseConfig := loadConfig(DatabaseConfigFilePath)
 
 	db, err := sql.Open(databaseConfig.DriverName, databaseConfig.DataScourceName)
 	defer db.Close()
@@ -37,7 +38,7 @@ func Migrate() {
 		panic(err)
 	}
 
-	filePathes, _ := filepath.Glob("./migrates/up/*.sql")
+	filePathes, _ := filepath.Glob(UpMigrationsPath + "/*.sql")
 	for _, filePath := range filePathes {
 		execWithFile(db, filePath)
 	}
@@ -70,5 +71,10 @@ func execWithFile(db *sql.DB, filePath string) {
 		panic(err)
 	}
 	tx.Commit()
+}
 
+func init() {
+	os.Mkdir(MigrationsPath, os.ModePerm)
+	os.Mkdir(UpMigrationsPath, os.ModePerm)
+	os.Mkdir(DownMigrationsPath, os.ModePerm)
 }
