@@ -29,15 +29,7 @@ func NewMigrate(name string) {
 }
 
 func Migrate() {
-	json_string := `
-{
-"driver_name" : "mysql",
-"data_source_name" : "root:@tcp(127.0.0.1:3306)/test?charset=utf8mb4"
-}
-`
-	databaseConfig := &DatabaseConfig{}
-
-	json.Unmarshal([]byte(json_string), &databaseConfig)
+	databaseConfig := loadConfig("./config/database.json")
 
 	db, err := sql.Open(databaseConfig.DriverName, databaseConfig.DataScourceName)
 	defer db.Close()
@@ -49,6 +41,18 @@ func Migrate() {
 	for _, filePath := range filePathes {
 		execWithFile(db, filePath)
 	}
+}
+
+func loadConfig(filePath string) *DatabaseConfig {
+	jsonChars, err := ioutil.ReadFile(filePath)
+	if err != nil {
+		panic(err)
+	}
+	databaseConfig := &DatabaseConfig{}
+
+	json.Unmarshal(jsonChars, &databaseConfig)
+
+	return databaseConfig
 }
 
 func execWithFile(db *sql.DB, filePath string) {
