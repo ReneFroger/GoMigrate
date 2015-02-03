@@ -6,14 +6,20 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"time"
 )
 
-const MigrationsPath string = "./migrates"
-const UpMigrationsPath string = "./migrates/up"
-const DownMigrationsPath string = "./migrates/down"
-const DatabaseConfigFilePath = "./config/database.json"
+const (
+	MigrationsPath          = "./migrates"
+	UpMigrationsPath        = "./migrates/up"
+	DownMigrationsPath      = "./migrates/down"
+	DatabaseConfigFilePath  = "./config/database.json"
+	DatabaseVersionFilePath = "./migrates/version"
+)
 
 type DatabaseConfig struct {
 	DriverName      string `json:"driver_name"`
@@ -23,9 +29,9 @@ type DatabaseConfig struct {
 func NewMigrate(name string) {
 	prefix := time.Now().UTC().Format("19920709213000")
 
-	downName := UpMigrationsPath + prefix + name + ".sql"
+	downName := UpMigrationsPath + prefix + "_" + name + ".sql"
 	os.Create(downName)
-	upName := DownMigrationsPath + prefix + name + ".sql"
+	upName := DownMigrationsPath + prefix + "_" + name + ".sql"
 	os.Create(upName)
 }
 
@@ -38,9 +44,29 @@ func Migrate() {
 		panic(err)
 	}
 
+	curVersion, err := ioutil.ReadFile(DatabaseVersionFilePath)
+	if err != nil {
+		os.Create(DatabaseVersionFilePath)
+	}
+	if len(curVersion) == 0 {
+		curVersion = []byte("0")
+	}
+
+	curVersionNum, err := strconv.Atoi(string(curVersion))
+	if err != nil {
+		panic("Version file must store a number")
+	}
+
 	filePathes, _ := filepath.Glob(UpMigrationsPath + "/*.sql")
+	regex, _ := regexp.Compile(`^(\d+)`)
 	for _, filePath := range filePathes {
-		execWithFile(db, filePath)
+		fileVersion := regex.FindString(path.Base(filePath))
+		fileVersionNum, _ := strconv.Atoi(fileVersion)
+		if curVersionNum < fileVersionNum {
+			execWithFile(db, filePath)
+			curVersionNum = fileVersionNum
+			ioutil.WriteFile(DatabaseVersionFilePath, []byte(fileVersion), os.ModePerm)
+		}
 	}
 }
 
