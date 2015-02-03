@@ -9,14 +9,15 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"time"
 )
 
 const (
-	MigrationsPath          = "./migrates"
-	UpMigrationsPath        = "./migrates/up"
-	DownMigrationsPath      = "./migrates/down"
+	MigrationsPath          = "./migrates/"
+	UpMigrationsPath        = "./migrates/up/"
+	DownMigrationsPath      = "./migrates/down/"
 	DatabaseConfigFilePath  = "./config/database.json"
 	DatabaseVersionFilePath = "./migrates/version"
 )
@@ -27,7 +28,7 @@ type DatabaseConfig struct {
 }
 
 func NewMigrate(name string) {
-	prefix := time.Now().UTC().Format("19920709213000")
+	prefix := strconv.FormatInt(time.Now().UTC().UnixNano(), 10)
 
 	downName := UpMigrationsPath + prefix + "_" + name + ".sql"
 	os.Create(downName)
@@ -57,7 +58,7 @@ func Migrate() {
 		panic("Version file must store a number")
 	}
 
-	filePathes, _ := filepath.Glob(UpMigrationsPath + "/*.sql")
+	filePathes, _ := filepath.Glob(UpMigrationsPath + "*.sql")
 	regex, _ := regexp.Compile(`^(\d+)`)
 	for _, filePath := range filePathes {
 		fileVersion := regex.FindString(path.Base(filePath))
@@ -68,6 +69,47 @@ func Migrate() {
 			ioutil.WriteFile(DatabaseVersionFilePath, []byte(fileVersion), os.ModePerm)
 		}
 	}
+}
+
+func Rollback() {
+	databaseConfig := loadConfig(DatabaseConfigFilePath)
+
+	db, err := sql.Open(databaseConfig.DriverName, databaseConfig.DataScourceName)
+	defer db.Close()
+	if err != nil {
+		panic(err)
+	}
+
+	filePathes, _ := filepath.Glob(DownMigrationsPath + "*.sql")
+
+	versions := make([]int, 0, len(filePathes))
+	regex, _ := regexp.Compile(`^(\d+)`)
+	for _, filePath := range filePathes {
+		fileVersion := regex.FindString(path.Base(filePath))
+		fileVersionNum, _ := strconv.Atoi(fileVersion)
+		versions = append(versions, fileVersionNum)
+	}
+	sort.Sort(sort.Reverse(sort.IntSlice(versions)))
+
+	preVersion := 0
+	rollbackVersion := 0
+	switch len(versions) {
+	case 0:
+		return
+	case 1:
+		rollbackVersion = versions[0]
+	default:
+		rollbackVersion = versions[0]
+		preVersion = versions[1]
+	}
+
+	regex, _ = regexp.Compile("^" + strconv.Itoa(rollbackVersion) + "")
+	for _, filePath := range filePathes {
+		if regex.Match([]byte(path.Base(filePath))) {
+			execWithFile(db, filePath)
+		}
+	}
+	ioutil.WriteFile(DatabaseVersionFilePath, []byte(strconv.Itoa(preVersion)), os.ModePerm)
 }
 
 func loadConfig(filePath string) *DatabaseConfig {
