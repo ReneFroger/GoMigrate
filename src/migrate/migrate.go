@@ -2,15 +2,14 @@ package migrate
 
 import (
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -18,114 +17,64 @@ const (
 	MigrationsPath          = "./migrates/"
 	UpMigrationsPath        = "./migrates/up/"
 	DownMigrationsPath      = "./migrates/down/"
-	DatabaseConfigFilePath  = "./config/database.json"
 	DatabaseVersionFilePath = "./migrates/version"
 )
-
-type DatabaseConfig struct {
-	DriverName      string `json:"driver_name"`
-	DataScourceName string `json:"data_source_name"`
-}
 
 func NewMigrate(name string) {
 	prefix := strconv.FormatInt(time.Now().UTC().UnixNano(), 10)
 
-	downName := UpMigrationsPath + prefix + "_" + name + ".sql"
-	os.Create(downName)
-	upName := DownMigrationsPath + prefix + "_" + name + ".sql"
+	upName := UpMigrationsPath + prefix + "_" + name + ".sql"
 	os.Create(upName)
+	downName := DownMigrationsPath + prefix + "_" + name + ".sql"
+	os.Create(downName)
+
+	fmt.Println("generate up sql file:", upName)
+	fmt.Println("generate down sql file:", downName)
 }
 
-func Migrate() {
-	databaseConfig := loadConfig(DatabaseConfigFilePath)
-
-	db, err := sql.Open(databaseConfig.DriverName, databaseConfig.DataScourceName)
-	defer db.Close()
-	if err != nil {
-		panic(err)
-	}
-
-	curVersion, err := ioutil.ReadFile(DatabaseVersionFilePath)
-	if err != nil {
-		os.Create(DatabaseVersionFilePath)
-	}
-	if len(curVersion) == 0 {
-		curVersion = []byte("0")
-	}
-
-	curVersionNum, err := strconv.Atoi(string(curVersion))
-	if err != nil {
-		panic("Version file must store a number")
-	}
-
+func Migrate(db *sql.DB) {
+	curVersion := curVersion()
 	filePathes, _ := filepath.Glob(UpMigrationsPath + "*.sql")
-	regex, _ := regexp.Compile(`^(\d+)`)
+	sort.Sort(sort.StringSlice(filePathes))
+
 	for _, filePath := range filePathes {
-		fileVersion := regex.FindString(path.Base(filePath))
-		fileVersionNum, _ := strconv.Atoi(fileVersion)
-		if curVersionNum < fileVersionNum {
+		if curVersion < path.Base(filePath) {
 			execWithFile(db, filePath)
-			curVersionNum = fileVersionNum
-			ioutil.WriteFile(DatabaseVersionFilePath, []byte(fileVersion), os.ModePerm)
+			fmt.Println("Migrate", filePath)
+
+			curVersion = path.Base(filePath)
+			ioutil.WriteFile(DatabaseVersionFilePath, []byte(curVersion), os.ModePerm)
 		}
 	}
 }
 
-func Rollback() {
-	databaseConfig := loadConfig(DatabaseConfigFilePath)
-
-	db, err := sql.Open(databaseConfig.DriverName, databaseConfig.DataScourceName)
-	defer db.Close()
-	if err != nil {
-		panic(err)
-	}
-
+func Rollback(db *sql.DB) {
 	filePathes, _ := filepath.Glob(DownMigrationsPath + "*.sql")
-
-	versions := make([]int, 0, len(filePathes))
-	regex, _ := regexp.Compile(`^(\d+)`)
-	for _, filePath := range filePathes {
-		fileVersion := regex.FindString(path.Base(filePath))
-		fileVersionNum, _ := strconv.Atoi(fileVersion)
-		versions = append(versions, fileVersionNum)
+	curVersion := curVersion()
+	preVersion := preVersion(filePathes, curVersion)
+	fmt.Println("Current Version is", curVersion)
+	if curVersion > preVersion {
+		execWithFile(db, DownMigrationsPath+curVersion)
+		ioutil.WriteFile(DatabaseVersionFilePath, []byte(preVersion), os.ModePerm)
 	}
-	sort.Sort(sort.Reverse(sort.IntSlice(versions)))
-
-	preVersion := 0
-	rollbackVersion := 0
-	switch len(versions) {
-	case 0:
-		return
-	case 1:
-		rollbackVersion = versions[0]
-	default:
-		rollbackVersion = versions[0]
-		preVersion = versions[1]
-	}
-
-	regex, _ = regexp.Compile("^" + strconv.Itoa(rollbackVersion) + "")
-	for _, filePath := range filePathes {
-		if regex.Match([]byte(path.Base(filePath))) {
-			execWithFile(db, filePath)
-		}
-	}
-	ioutil.WriteFile(DatabaseVersionFilePath, []byte(strconv.Itoa(preVersion)), os.ModePerm)
+	fmt.Println("Rollback to", preVersion)
 }
 
-func loadConfig(filePath string) *DatabaseConfig {
-	jsonChars, err := ioutil.ReadFile(filePath)
-	if err != nil {
-		panic(err)
+func preVersion(filePathes []string, curVersion string) string {
+	sort.Sort(sort.Reverse(sort.StringSlice(filePathes)))
+	if len(filePathes) < 2 {
+		return curVersion
 	}
-	databaseConfig := &DatabaseConfig{}
-
-	json.Unmarshal(jsonChars, &databaseConfig)
-
-	return databaseConfig
+	for _, filePath := range filePathes {
+		filePathVersion := path.Base(filePath)
+		if filePathVersion < curVersion {
+			return filePathVersion
+		}
+	}
+	return "0"
 }
 
 func execWithFile(db *sql.DB, filePath string) {
-	fmt.Println(filePath)
 	content, err := ioutil.ReadFile(filePath)
 	if err != nil {
 		panic(err)
@@ -139,6 +88,14 @@ func execWithFile(db *sql.DB, filePath string) {
 		panic(err)
 	}
 	tx.Commit()
+}
+
+func curVersion() string {
+	curVersion, err := ioutil.ReadFile(DatabaseVersionFilePath)
+	if err != nil {
+		os.Create(DatabaseVersionFilePath)
+	}
+	return strings.Trim(string(curVersion), " \n")
 }
 
 func init() {
