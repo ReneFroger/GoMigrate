@@ -31,8 +31,9 @@ func loadConfig(filePath string) *DatabaseConfig {
 
 func main() {
 	// migrate.NewMigrate("test2")
-	migrate.Rollback(db)
+	// migrate.Rollback(db)
 	// migrate.Migrate(db)
+	migrate.RefreshSchema(db)
 }
 
 func init() {

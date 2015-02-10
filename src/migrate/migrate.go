@@ -18,6 +18,7 @@ const (
 	UpMigrationsPath        = "./migrates/up/"
 	DownMigrationsPath      = "./migrates/down/"
 	DatabaseVersionFilePath = "./migrates/version"
+	SchemaFilePath          = "./migrates/schema.sql"
 )
 
 func NewMigrate(name string) {
@@ -58,6 +59,34 @@ func Rollback(db *sql.DB) {
 		ioutil.WriteFile(DatabaseVersionFilePath, []byte(preVersion), os.ModePerm)
 	}
 	fmt.Println("Rollback to", preVersion)
+}
+
+func RefreshSchema(db *sql.DB) {
+	file, err := os.Create(SchemaFilePath)
+	defer file.Close()
+	if err != nil {
+		panic(err)
+	}
+
+	var tableName string
+	rows, err := db.Query("SHOW TABLES;")
+	if err != nil {
+		panic(err)
+	}
+
+	var schemaContent string
+	for rows.Next() {
+		rows.Scan(&tableName)
+		queryString := "SHOW CREATE TABLE " + tableName + ";"
+
+		var tableDescribe string
+		err = db.QueryRow(queryString).Scan(&tableName, &tableDescribe)
+		if err != nil {
+			panic(err)
+		}
+		schemaContent += tableDescribe + ";\n\n\n"
+	}
+	file.WriteString(strings.TrimSpace(schemaContent))
 }
 
 func preVersion(filePathes []string, curVersion string) string {
