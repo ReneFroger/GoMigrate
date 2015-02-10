@@ -47,6 +47,7 @@ func Migrate(db *sql.DB) {
 			ioutil.WriteFile(DatabaseVersionFilePath, []byte(curVersion), os.ModePerm)
 		}
 	}
+	RefreshSchema(db)
 }
 
 func Rollback(db *sql.DB) {
@@ -59,6 +60,7 @@ func Rollback(db *sql.DB) {
 		ioutil.WriteFile(DatabaseVersionFilePath, []byte(preVersion), os.ModePerm)
 	}
 	fmt.Println("Rollback to", preVersion)
+	RefreshSchema(db)
 }
 
 func RefreshSchema(db *sql.DB) {
