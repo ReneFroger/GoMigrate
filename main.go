@@ -3,9 +3,11 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
+	"flag"
 	_ "github.com/go-sql-driver/mysql"
 	"io/ioutil"
 	"migrate"
+	"os"
 )
 
 const DatabaseConfigFilePath = "./config/database.json"
@@ -30,10 +32,20 @@ func loadConfig(filePath string) *DatabaseConfig {
 }
 
 func main() {
-
-	// migrate.NewMigrate("test2")
-	// migrate.Rollback(db)
-	// migrate.Migrate(db)
+	flag.Parse()
+	switch flag.Arg(0) {
+	case "install":
+		os.OpenFile(DatabaseConfigFilePath, os.O_CREATE, 0644)
+		migrate.Install()
+	case "new":
+		migrate.NewMigrate(flag.Arg(1))
+	case "rollback":
+		migrate.Rollback(db)
+	case "refresh":
+		migrate.RefreshSchema(db)
+	default:
+		migrate.Migrate(db)
+	}
 }
 
 func init() {
