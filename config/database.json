@@ -1,0 +1,4 @@
+{
+"driver_name" : "mysql",
+"data_source_name" : "root:@tcp(127.0.0.1:3306)/test?charset=utf8mb4"
+}
