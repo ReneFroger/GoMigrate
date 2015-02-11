@@ -21,6 +21,14 @@ const (
 	SchemaFilePath          = "./migrates/schema.sql"
 )
 
+func Install() {
+	os.Mkdir(MigrationsPath, os.ModePerm)
+	os.Mkdir(UpMigrationsPath, os.ModePerm)
+	os.Mkdir(DownMigrationsPath, os.ModePerm)
+	os.Create(DatabaseVersionFilePath)
+	os.Create(SchemaFilePath)
+}
+
 func NewMigrate(name string) {
 	prefix := strconv.FormatInt(time.Now().UTC().UnixNano(), 10)
 
@@ -127,10 +135,4 @@ func curVersion() string {
 		os.Create(DatabaseVersionFilePath)
 	}
 	return strings.Trim(string(curVersion), " \n")
-}
-
-func init() {
-	os.Mkdir(MigrationsPath, os.ModePerm)
-	os.Mkdir(UpMigrationsPath, os.ModePerm)
-	os.Mkdir(DownMigrationsPath, os.ModePerm)
 }
